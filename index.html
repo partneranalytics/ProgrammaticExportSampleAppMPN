@@ -1,0 +1,590 @@
+﻿<html>
+	<head>
+		<title> Programmatic Access to Partner Analytics </title>
+		<meta charset="UTF-8">
+	</head>
+	<body onload="loadPage()">
+		<script src="https://cdn.jsdelivr.net/momentjs/2.13.0/moment.min.js"></script>
+		<script>
+			var baseurl = "https://localhost:44365/";
+			var datasetPath = "ProgrammaticExportSampleAppMPN/datasets";
+			var queryPath = "ProgrammaticExportSampleAppMPN/query";
+			var tryQueryPath = "ProgrammaticExportSampleAppMPN/tryquery";
+			var reportPath = "ProgrammaticExportSampleAppMPN/report";
+			var selectColumnsMap = {};
+			var metricColumnsMap = {};
+			var timeSpansMap = {};
+			
+			function removeOptions(selectElement) {
+				if (selectElement == undefined || selectElement.options == undefined) {
+					return;
+				}
+				var i, L = selectElement.options.length - 1;
+				for(i = L; i >= 0; i--) {
+					selectElement.remove(i);
+				}
+			}
+			
+			function addDefaultAndResetOptions(selectElement, defaultOption) {
+				removeOptions(selectElement);
+				addNewOption(selectElement, defaultOption);
+			}
+
+			function addNewOption(selectElement, newOption) {
+				var el = document.createElement("option");
+				el.textContent = newOption;
+				el.value = newOption;
+				selectElement.appendChild(el);
+			}
+
+			function loadDatasets() {
+				var xmlhttp = new XMLHttpRequest();
+				xmlhttp.open("GET", baseurl + datasetPath, true);
+				xmlhttp.onreadystatechange = function() {
+					if (xmlhttp.readyState === 4 && xmlhttp.status === 200) {
+						var select = document.getElementById("datasets"); 
+						var datasets = JSON.parse(xmlhttp.responseText);
+						addDefaultAndResetOptions(select, "Select Table");
+						for (var i = 0; i < datasets.value.length; i++) {
+							addNewOption(select, datasets.value[i].datasetName);
+							selectColumnsMap[datasets.value[i].datasetName] = datasets.value[i].selectableColumns;
+							metricColumnsMap[datasets.value[i].datasetName] = datasets.value[i].availableMetrics;
+							timeSpansMap[datasets.value[i].datasetName] = datasets.value[i].availableDateRanges;
+						}
+						alert("Dataset loaded successfully");
+					}
+				}
+				xmlhttp.send();
+			}
+			
+			function resetAllSelects(removeElements) {
+				var selectColumns = document.getElementById("selectColumns");
+				var metricColumns = document.getElementById("selectMetrics");
+				var filterColumn = document.getElementById("filterColumn");
+				var orderColumns = document.getElementById("orderColumn");
+				var ordering = document.getElementById("orderCriteria");
+				var orderDirection = document.getElementById("orderDirection");
+				var timeSpan = document.getElementById("timeSpan");
+				var filterConditions = document.getElementById("filterConditions");
+				var outputQuery = document.getElementById("query");
+				var table = document.getElementById("customQueryExecutionTable");
+				if (removeElements) {
+					removeOptions(selectColumns);
+					removeOptions(metricColumns);
+					addDefaultAndResetOptions(filterColumn, "Select Column");
+					addDefaultAndResetOptions(orderColumns, "Select Column");
+					removeOptions(ordering);
+					removeOptions(filterConditions);
+					addDefaultAndResetOptions(timeSpan, "Select Timespan");
+					outputQuery.value = "";
+					table.innerHTML = "";
+				} else {
+					selectColumns.selectedIndex = -1;
+					metricColumns.selectedIndex = -1;
+					orderColumns.selectedIndex = -1;
+					ordering.selectedIndex = -1;
+					filterColumn.selectedIndex = -1
+				}
+				var filterOperation = document.getElementById("filterOperation");
+				filterOperation.selectedIndex = 0;
+				document.getElementById("filterValue").value = "";
+				var orderDirection = document.getElementById("orderDirection");
+				orderDirection.selectedIndex = 0;
+				document.getElementById("top").value = "0";
+				timeSpan.selectIndex = 0
+			}
+		  
+			function loadDatasetSelect() {
+				resetAllSelects(true);
+				var datasetName = document.getElementById("datasets").value;
+				var selectColumns = document.getElementById("selectColumns");
+				var filterColumn = document.getElementById("filterColumn");
+				var orderColumns = document.getElementById("orderColumn");
+				var selectColumnArray = selectColumnsMap[datasetName];
+				for (var i = 0; i < selectColumnArray.length; i++) {
+					addNewOption(selectColumns, selectColumnArray[i]);
+					addNewOption(filterColumn, selectColumnArray[i]);
+					addNewOption(orderColumns, selectColumnArray[i]);
+				}
+				var metricColumns = document.getElementById("selectMetrics");
+				var metricColumnArray = metricColumnsMap[datasetName];
+				for (var i = 0; i < metricColumnArray.length; i++) {
+					addNewOption(metricColumns, metricColumnArray[i]);
+					addNewOption(filterColumn, metricColumnArray[i]);
+					addNewOption(orderColumns, metricColumnArray[i]);
+				}
+				var timeSpan = document.getElementById("timeSpan");
+				var timeSpansArray = timeSpansMap[datasetName];
+				for (var i = 0; i < timeSpansArray.length; i++) {
+					addNewOption(timeSpan, timeSpansArray[i]);
+				}
+			}
+		  			
+			function addCondition() {
+				var filterColumns = document.getElementById("filterColumn");
+				if (filterColumns.selectedIndex == 0 || filterColumns.selectedIndex == -1) {
+					alert("Select column for filter condition");
+					return;
+				}
+				var filterOperation = document.getElementById("filterOperation");
+				if (filterOperation.selectedIndex == 0 || filterOperation.selectedIndex == -1) {
+					alert("Select opeation for filter column");
+					return;
+				}
+				var filterValue = document.getElementById("filterValue").value;
+				if (!filterValue.trim().length) {
+					alert('Filter condition value is empty');
+					return;
+				}
+				var filterCondition = filterColumns.value + " " + filterOperation.value + " " + filterValue;
+				var filterConditions = document.getElementById("filterConditions");
+				addNewOption(filterConditions, filterCondition);
+			}
+			
+			function removeSelected(element) {
+				if (element.selectedIndex == -1) {
+					alert('Select a condition to remove');
+					return;
+				}
+				for(var i = element.options.length - 1; i >= 0; i--) {
+					if(element.options[i].selected == true) {
+						try {
+							element.remove(i, null);
+						} catch(error) {
+							element.remove(i);
+						}
+					}
+				}
+			}
+
+			function removeCondition() {
+				var filterConditions = document.getElementById("filterConditions");
+				removeSelected(filterConditions);
+			}
+			
+			function addOrdering() {
+				var orderColumns = document.getElementById("orderColumn");
+				if (orderColumns.selectedIndex == 0 || orderColumns.selectedIndex == -1) {
+					alert("Select column for order criteria");
+					return;
+				}
+				var orderDirection = document.getElementById("orderDirection");
+				var direction = "";
+				if (orderDirection.selectedIndex == 0 || orderDirection.selectedIndex == -1) {
+					direction = "DESC"
+				} else {
+					direction = orderDirection.value;
+				}
+				var orderExpression = orderColumns.value + " " + direction;
+				var ordering = document.getElementById("orderCriteria");
+				addNewOption(ordering, orderExpression);
+			}
+			
+			function removeOrdering() {
+				var ordering = document.getElementById("orderCriteria");
+				removeSelected(ordering);
+			}
+
+			function generateQuery() {
+				var datasets = document.getElementById("datasets");
+				if (datasets.selectedIndex == 0 || datasets.selectedIndex == -1) {
+					alert("Table is not selected");
+					return;
+				}
+				var selectedColumns = Array.from(document.getElementById('selectColumns').selectedOptions).map(el=>el.value);
+				var selectedMetrics = Array.from(document.getElementById('selectMetrics').selectedOptions).map(el=>el.value);
+				if (selectedColumns.length == 0 && selectedMetrics.length == 0) {
+					alert("At least one column or metric should be selected");
+					return;
+				}
+				var query = "SELECT ";
+				if (selectedColumns.length > 0) {
+					query += selectedColumns.join();
+				}
+				if (selectedMetrics.length > 0) {
+					if (selectedColumns.length > 0) {
+						query += ",";
+					}
+					query += selectedMetrics.join()
+				}
+				query += " FROM " + datasets.value + " ";
+				filterConditions = document.getElementById("filterConditions");
+				var filters = Array.from(filterConditions.options).map(el=>el.value);
+				if (filters.length > 0) {
+					query += "WHERE " + filters.join(" AND ");
+				}
+				ordering = document.getElementById("orderCriteria");
+				var order = Array.from(ordering.options).map(el=>el.value);
+				if (order.length > 0) {
+					query += " ORDER BY " + order.join();
+				}
+				var top = document.getElementById("top").value;
+				if (top > 0) {
+					query += " LIMIT " + top
+				}
+				timeSpan = document.getElementById("timeSpan");
+				if (timeSpan.selectedIndex != 0 && timeSpan.selectedIndex != -1) {
+					query += " TIMESPAN " + timeSpan.value;
+				}
+				outputQuery = document.getElementById("query");
+				outputQuery.value = query
+			}
+			
+			function createQuery() {
+				var query = document.getElementById("query").value;
+				var queryName = document.getElementById("queryName").value;
+				if (!query.trim().length) {
+					alert('Query is empty. Click on generate query to populate the query.');
+					return;
+				}
+				if (!queryName.trim().length) {
+					alert('Query name is empty');
+					return;
+				}
+				var xmlhttp = new XMLHttpRequest();
+				var queryPathWithParams = queryPath + "?query=" + encodeURIComponent(query);
+				queryPathWithParams += "&query_name=" + encodeURIComponent(queryName);
+				xmlhttp.open("POST", baseurl + queryPathWithParams, true);
+				xmlhttp.onreadystatechange = function() {
+					var queryId = document.getElementById("queryId"); 
+					if (xmlhttp.readyState ===4 && xmlhttp.status ===200) {
+						document.getElementById("myqueries").scrollIntoView();
+						var queryIdString = xmlhttp.responseText;
+						queryId.value = queryIdString;
+						alert("Query created successfully with ID: " + queryIdString);
+					}
+				}
+				xmlhttp.send();
+			}
+			
+			function loadMyQueries() {
+				var myQueries = document.getElementById("myqueries");
+				addDefaultAndResetOptions(myQueries, "Select Query");
+				var xmlhttp = new XMLHttpRequest();
+				xmlhttp.open("GET", baseurl + queryPath, true);
+				xmlhttp.onreadystatechange = function() {
+					if (xmlhttp.readyState ===4 && xmlhttp.status ===200) {
+						var queries = JSON.parse(xmlhttp.responseText);
+						for (var i = 0; i < queries.value.length; i++) {
+							var elementString = "QueryType: " + queries.value[i].type + ", QueryName: " + queries.value[i].name + ", QueryID: " + queries.value[i].queryId + ", QueryText: " + queries.value[i].query;
+							addNewOption(myQueries, elementString);
+						}
+						alert("Queries loaded");
+					}
+				}
+				xmlhttp.send();
+			}
+			
+			function loadMyQueryId() {
+				var queryId = document.getElementById("queryId");
+				var selectedQueryText = document.getElementById("selectedQuery");
+				var queriesElement = document.getElementById("myqueries")
+				if (queriesElement.selectedIndex == 0) {
+					queryId.value = "";
+					return;
+				}
+				var selectedQuery = document.getElementById("myqueries").value;
+				queryId.value = selectedQuery.split(", QueryID: ").pop().split(", QueryText: ")[0];
+				selectedQueryText.value = selectedQuery.split(", QueryText: ").pop();
+			}
+			
+			function scheduleReport() {
+				var queryId = document.getElementById("queryId").value;
+				var reportName = document.getElementById("reportName").value;
+				if (!queryId.trim().length) {
+					alert('query is empty');
+					return;
+				}
+				if (!reportName.trim().length) {
+					alert('query name is empty');
+					return;
+				}
+				var xmlhttp = new XMLHttpRequest();
+				var reportPathWithParams = reportPath + "?query_id=" + encodeURIComponent(queryId);
+				reportPathWithParams += "&report_name=" + encodeURIComponent(reportName);
+				if (document.getElementById("reportInterval").value > 0) {
+					reportPathWithParams += "&recurrence_interval=" + encodeURIComponent(document.getElementById("reportInterval").value);
+				}
+				if (document.getElementById("reportReccurence").value > 0) {
+					reportPathWithParams += "&recurrence_count=" + encodeURIComponent(document.getElementById("reportReccurence").value);
+				}
+				var reportStartTime = document.getElementById("reportStartTime").value;
+				var utcDate = new Date();
+				var offsetMinutes = utcDate.getTimezoneOffset();
+				var datetimeUTC = moment.utc(reportStartTime).add(offsetMinutes,'minutes').toISOString().split('.')[0]+"Z";
+				reportPathWithParams += "&report_start_name=" + encodeURIComponent(datetimeUTC);
+				
+				xmlhttp.open("POST", baseurl + reportPathWithParams, true);
+				xmlhttp.onreadystatechange = function() {
+					if (xmlhttp.readyState ===4 && xmlhttp.status ===200) {
+						var reportIdString = xmlhttp.responseText;
+						alert("Report created successfully with ID: " + reportIdString);
+					}
+				}
+				xmlhttp.send();
+			}
+			
+			function loadPage() {
+				var reportStartTime = document.getElementById("reportStartTime");
+				var now = new Date();
+				now.setMinutes(now.getMinutes() + 720 - now.getTimezoneOffset());
+				reportStartTime.value = now.toISOString().slice(0,16);
+			}
+			
+			function addRowToTable(table, rowArray) {
+				var row = table.insertRow();
+				for (var i = 0; i < rowArray.length; i++) {
+					var cell = row.insertCell(i);
+					var cellText = document.createTextNode(rowArray[i]);
+					cell.appendChild(cellText);
+				}
+			}
+			
+			function updateTableFromResult(table, result) {
+				if ("value" in result && "totalCount" in result && result.totalCount > 0) {
+					var resultList = result.value;
+					for (var i = 0; i < resultList.length; i++) {
+						var keyRowArr = []
+						var valRowArr = []
+						for (let key in resultList[i]) {
+							if (i == 0) {
+								keyRowArr.push(key);
+							}
+							valRowArr.push(resultList[i][key]);
+						}
+						if (i == 0) {
+							addRowToTable(table, keyRowArr);
+						}
+						addRowToTable(table, valRowArr);
+					}
+				}
+			}
+			
+			function trySelectedQuery() {
+				var selectedQueryText = document.getElementById("selectedQuery").value;
+				if (!selectedQueryText.trim().length) {
+					alert("Select a valid query from drop down");
+					return;
+				}
+				var xmlhttp = new XMLHttpRequest();
+				var queryPathWithParams = tryQueryPath + "?export_query=" + encodeURIComponent(selectedQueryText);
+				xmlhttp.open("GET", baseurl + queryPathWithParams, true);
+				xmlhttp.onreadystatechange = function() {
+					if (xmlhttp.readyState ===4 && xmlhttp.status ===200) {
+						var table = document.getElementById("selectedQueryExecutionTable");
+						table.innerHTML = "";
+						var queryResult = JSON.parse(xmlhttp.responseText);
+						updateTableFromResult(table, queryResult);
+					}
+				}
+				xmlhttp.send();
+			}
+			
+			function tryCustomQuery() {
+				var query = document.getElementById("query").value;
+				if (!query.trim().length) {
+					alert('query is empty');
+					return;
+				}
+				var xmlhttp = new XMLHttpRequest();
+				var queryPathWithParams = tryQueryPath + "?export_query=" + encodeURIComponent(query);
+				xmlhttp.open("GET", baseurl + queryPathWithParams, true);
+				xmlhttp.onreadystatechange = function() {
+					if (xmlhttp.readyState ===4 && xmlhttp.status ===200) {
+						var table = document.getElementById("customQueryExecutionTable");
+						table.innerHTML = "";
+						var queryResult = JSON.parse(xmlhttp.responseText);
+						updateTableFromResult(table, queryResult);
+					}
+				}
+				xmlhttp.send();
+			}
+		</script>
+		<style>
+			body {
+				background-color:linen;
+				margin-left:40px;
+			}
+			h2 {
+				color: green
+			}
+			h3 {
+				color:red
+			}
+			h4 {
+				color:blue
+			}
+			label {
+				margin-right: 220px;
+			}
+			#myqueries {
+				width:1500px;
+				height:25px;
+			}
+			#selectedQuery {
+				width:1500px;
+				height:25px;
+			}
+			#datasets{
+				width:300px;
+				height:25px;
+			}
+			.selectColumns {
+				margin-right:150px;
+			}
+			#selectColumns {
+				margin-right: 50px;
+				width:300px;
+				height:200px
+			}
+			#selectMetrics {
+				margin-right: 50px;
+				width:300px;
+				height:200px
+			}
+			#filterColumn {
+				width:300px;
+				height:	25px;
+			}
+			#filterOperation {
+				height:25px;
+			}
+			#filterValue {
+				width:600px;
+				height:25px;
+			}
+			#filterConditions {
+				width:800px;
+				height:200px;
+			}
+			#orderColumn {
+				width:300px;
+				height:	25px;
+			}
+			#orderDirection {
+				width:300px;
+				height:	25px;
+			}
+			#orderCriteria {
+				width:500px;
+				height:100px;
+			}
+			#timeSpan {
+				width:300;
+				height:25px;
+			}
+			#query {
+				width:2000;
+				height:25px;
+			}
+			#queryName {
+				width:300;
+				height:25px;
+			}
+			#queryId {
+				width:300;
+				height:25px;
+			}
+			#reportName {
+				width:300;
+				height:25px;
+			}
+			table, td, th {
+				border: 1px solid black;
+			}
+			table {
+				border-collapse: collapse;
+				width: 100%;
+			}
+			th {
+				height: 70px;
+			}
+		</style>
+		<h2>Schedule Report</h2>
+		<button onclick="loadMyQueries()">Refresh Available Queries</button>
+		<select id="myqueries" name="myqueries" onchange="loadMyQueryId()">
+			<option value="Select Query" selected>Select Query</option>
+		</select><br>
+		<label for="query">Selected query</label><br>
+		<input type="text" id="selectedQuery" name="selectedQuery" readonly><br><br>
+		<button onclick="trySelectedQuery()">Try Running Selected Query from dropdown</button><br><br>
+		<table id="selectedQueryExecutionTable" border="1"></table><br><br>
+		<label for="queryId">Selected Query ID or Enter Query ID</label><br>
+		<input type="text" id="queryId" name="queryId"><br><br>
+		<label for="reportName">Name of report</label><br>
+		<input type="text" id="reportName" name="reportName", value="SampleReport"><br><br>
+		<label for="reportStartTime">Report start date and time</label><br>
+		<input type="datetime-local" id="reportStartTime" name="reportStartTime"><br><br>
+		<label for="reportInterval">Report interval (hours)</label><br>
+		<input type="number" id="reportInterval" name="reportInterval" min="4" max="2160" value="24"><br><br>
+		<label for="reportReccurence">Report reccurence count</label><br>
+		<input type="number" id="reportReccurence" name="reportReccurence" min="1"><br><br>
+		<button onclick="scheduleReport()">Schedule Report</button><br><br>
+		<hr>
+		<h2>Custom Query Creation</h2>
+		<h4>Step 1. Get Datasets</h4>
+		<button onclick="loadDatasets()">Get Available Datasets</button>
+		<h4>1.1 Pick Table (Required)</h4>
+		<select id="datasets" name="datasets" onchange="loadDatasetSelect()">
+			<option value="Select Table" selected>Select Table</option>
+		</select>
+		<h4>1.2 Pick Columns (Required. Ctrl + Click)</h4>
+		<label for="selectColumns">Selectable Columns</label>
+		<label for="selectMetrics">Selectable Metrics</label><br>
+		<select name="selectColumns" id="selectColumns" multiple></select>
+		<select name="selectMetrics" id="selectMetrics" multiple></select><br><br>
+		<h4>1.3 Filter conditions (Optional)</h4>
+		<select name="filterColumn" id="filterColumn">
+			<option value="Select Column" selected>Select Column</option>
+		</select>
+		<select name="filterOperation" id="filterOperation">
+			<option value="Select Operation" selected>Select Operation</option>
+			<option value="=">=</option>
+			<option value=">">></option>
+			<option value="<"><</option>
+			<option value=">=">></option>
+			<option value="<="><=</option>
+			<option value="!=">!=</option>
+			<option value="LIKE">LIKE</option>
+			<option value="NOT LIKE">NOT LIKE</option>	
+			<option value="IN">IN</option>	
+			<option value="NOT IN">NOT IN</option>	
+		</select>
+		<input type="text" id="filterValue" name="filterValue"><br><br>
+		<button onclick="addCondition()">Add fiilter condition</button><br><br>
+		<label for="filterConditions">Current filter conditions</label><br>
+		<select name="filterConditions" id="filterConditions" multiple></select><br><br>
+		<button onclick="removeCondition()">Remove fiilter conditions</button>
+		<h4>1.4 Ordering (Optional)</h4>
+		<select name="orderColumn" id="orderColumn">
+			<option value="Select Column" selected>Select Column</option>
+		</select>
+		<select name="orderDirection" id="orderDirection">
+			<option value="Select Direction" selected>Select Direction</option>
+			<option value="ASC">ASC</option>
+			<option value="DESC">DESC</option>
+		</select><br><br>
+		<button onclick="addOrdering()">Add order criteria</button><br><br>
+		<label for="orderCriteria">Current order criteria</label><br>
+		<select name="orderCriteria" id="orderCriteria" multiple>
+		</select><br><br>
+		<button onclick="removeOrdering()">Remove order Criteria</button>
+		<h4>1.5 Number of rows (Optional)</h4>
+		<input type="number" id="top" name="top" min="0" max="1000000000" step="1" value="0"><br>
+		<h4>1.6 Timespan (Optional)</h4>
+		<select name="timeSpan" id="timeSpan">
+			<option value="Select Timespan" selected>Select Timespan</option>
+		</select>
+		<h4>1.7 Generate Query</h4>
+		<button onclick="generateQuery()">Generate Query</button><br><br>
+		<label for="query">Output query</label><br>
+		<input type="text" id="query" name="query" readonly><br>
+		<h4>1.8 Try Running Query</h4>
+		<button onclick="tryCustomQuery()">Try Running Query</button><br><br>
+		<table id="customQueryExecutionTable" border="1"></table><br><br>
+		<h4>Step 2. Create Query</h4>
+		<label for="queryName">Name of query</label><br>
+		<input type="text" id="queryName" name="queryName" value="SampleQuery"><br><br>
+		<button onclick="createQuery()">Create Query</button>
+  </body>
+</html>
